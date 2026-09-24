@@ -261,17 +261,104 @@ def crop_replayed_scene_to_mp4(video_url: str, start_time: float, end_time: floa
         return f"Error cropping scene to MP4 for {video_url}: {str(e)}"
 
 
-def create_most_replayed_video_shorts(top_video_count: int = 10, max_scenes_per_video: int = 2) -> str:
-    """Master workflow tool to gather top 10 trending videos, find all most replayed scenes for each video,
-    and crop those scenes into MP4 format shorts.
+def create_shorts_from_video_url(video_url: str, max_scenes: int = 3) -> str:
+    """Processes a specific YouTube video URL, extracts its peak most replayed scenes from the YouTube heatmap,
+    and crops those scenes into MP4 format video shorts.
 
     Args:
-        top_video_count: Number of top trending videos to process (default: 10).
+        video_url: Full YouTube video URL or ID.
+        max_scenes: Maximum number of replayed scenes to crop for this video (default: 3).
+
+    Returns:
+        Structured text report detailing all generated MP4 video shorts for the provided URL.
+    """
+    if not video_url.startswith("http"):
+        video_url = f"https://www.youtube.com/watch?v={video_url}"
+
+    scenes_data_str = get_most_replayed_scenes(video_url, max_scenes=max_scenes)
+    try:
+        scenes_info = json.loads(scenes_data_str)
+        v_title = scenes_info.get("video", "YouTube_Video")
+        scenes = scenes_info.get("scenes", [])
+    except Exception as e:
+        return f"Failed to analyze scenes for {video_url}: {str(e)}"
+
+    if not scenes:
+        scenes = [{
+            "start_sec": 10,
+            "end_sec": 25,
+            "time_window": "00:10 - 00:25",
+            "heatmap_score": 0.0,
+            "chapter": "Fallback Section"
+        }]
+
+    # Extract video ID for clean output naming
+    v_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", video_url)
+    v_id = v_id_match.group(1) if v_id_match else "custom_vid"
+
+    shorts_created = []
+    for s_idx, scene in enumerate(scenes, 1):
+        st = scene["start_sec"]
+        et = scene["end_sec"]
+        filename = f"short_url_{v_id}_{s_idx:02d}_{int(st)}s_{int(et)}s.mp4"
+
+        crop_res = crop_replayed_scene_to_mp4(
+            video_url=video_url,
+            start_time=st,
+            end_time=et,
+            output_filename=filename
+        )
+
+        out_path = OUTPUT_DIR / filename
+        file_exists = out_path.exists()
+        file_size_mb = (out_path.stat().st_size / (1024 * 1024)) if file_exists else 0.0
+
+        shorts_created.append({
+            "video_title": v_title,
+            "video_url": video_url,
+            "scene_index": s_idx,
+            "time_window": scene["time_window"],
+            "heatmap_score": scene["heatmap_score"],
+            "chapter": scene.get("chapter", "N/A"),
+            "mp4_file": str(out_path),
+            "filename": filename,
+            "size_mb": round(file_size_mb, 2),
+            "status": "Success" if file_exists else "Failed"
+        })
+
+    report_lines = [
+        f"# Most Replayed Video Shorts Report",
+        f"Processed video **{v_title}** (`{video_url}`) and generated **{len(shorts_created)}** MP4 video shorts.\n",
+        "## Summary of Cropped Shorts (MP4 Format):",
+    ]
+
+    for item in shorts_created:
+        report_lines.append(
+            f"- **{item['video_title']}**\n"
+            f"  - **Scene #{item['scene_index']} Window**: {item['time_window']} (Score: {item['heatmap_score']})\n"
+            f"  - **Chapter**: {item['chapter']}\n"
+            f"  - **Output MP4 File**: `{item['filename']}` ({item['size_mb']} MB)\n"
+            f"  - **Full Path**: `{item['mp4_file']}`\n"
+        )
+
+    return "\n".join(report_lines)
+
+
+def create_most_replayed_video_shorts(video_url: str = None, top_video_count: int = 10, max_scenes_per_video: int = 2) -> str:
+    """Master workflow tool to gather top 10 trending videos OR process a provided YouTube URL,
+    find all most replayed scenes for each video, and crop those scenes into MP4 format shorts.
+
+    Args:
+        video_url: Optional specific YouTube video URL. If provided, processes this specific video instead of trending videos.
+        top_video_count: Number of top trending videos to process if video_url is not provided (default: 10).
         max_scenes_per_video: Maximum number of replayed scenes to crop per video (default: 2).
 
     Returns:
-        Structured text report detailing all generated MP4 video shorts across all 10 videos.
+        Structured text report detailing all generated MP4 video shorts.
     """
+    if video_url:
+        return create_shorts_from_video_url(video_url=video_url, max_scenes=max_scenes_per_video)
+
     # Step 1: Gather top 10 trending videos
     trending_data_str = gather_top_trending_videos(count=top_video_count)
     try:
@@ -364,16 +451,17 @@ root_agent = Agent(
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
     instruction=(
-        "You are an AI Video Shorts Creator agent specialized in extracting and cropping the most replayed scenes from top trending YouTube videos. "
-        "When the user requests to 'create most replayed video shorts' (or similar prompts), your workflow is:\n"
-        "1. Gather the top 10 trending videos on YouTube.\n"
-        "2. Check audience retention / player heatmap data for each video to detect all peak replayed scenes (note: each video may contain more than 1 peak scene).\n"
-        "3. Crop those exact replayed scenes into separate MP4 format video files under output_shorts/.\n"
-        "4. Return a complete, clear list of all cropped MP4 shorts created from the ten trending videos.\n\n"
-        "Use the `create_most_replayed_video_shorts` tool to perform this complete end-to-end task, or use individual tools `gather_top_trending_videos`, `get_most_replayed_scenes`, and `crop_replayed_scene_to_mp4` if step-by-step execution is required."
+        "You are an AI Video Shorts Creator agent specialized in extracting and cropping the most replayed scenes from YouTube videos. "
+        "Your workflow:\n"
+        "1. If the user provides a specific YouTube video URL (or link), process that specific video URL using `create_shorts_from_video_url` or `create_most_replayed_video_shorts(video_url=...)`.\n"
+        "2. If the user requests to 'create most replayed video shorts' without a specific URL, gather top 10 trending videos and process all of them.\n"
+        "3. Check audience retention / player heatmap data to detect all peak replayed scenes for the video(s).\n"
+        "4. Crop those exact replayed scenes into separate MP4 format video files under output_shorts/.\n"
+        "5. Return a complete, clear list of all cropped MP4 shorts created."
     ),
     tools=[
         create_most_replayed_video_shorts,
+        create_shorts_from_video_url,
         gather_top_trending_videos,
         get_most_replayed_scenes,
         crop_replayed_scene_to_mp4,
