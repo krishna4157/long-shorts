@@ -29,9 +29,26 @@ static_ffmpeg.add_paths()
 
 import yt_dlp
 
-OUTPUT_DIR = Path("/config/Desktop/Session1/test-short/output_shorts")
+# OUTPUT_DIR = Path("/config/Desktop/Session1/test-short/output_shorts")
+# OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR = Path(r"D:\GIT\long-shorts\output-shorts")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+print("Saving to:", OUTPUT_DIR.resolve())
 
+COOKIES_FILE = Path(r"D:\GIT\long-shorts\cookies.txt")
+COOKIES_BROWSER = "firefox"  # used only if cookies.txt doesn't exist
+
+def yt_auth_opts() -> dict:
+    """Cookie options for the yt_dlp Python API."""
+    if COOKIES_FILE.exists():
+        return {"cookiefile": str(COOKIES_FILE)}
+    return {"cookiesfrombrowser": (COOKIES_BROWSER,)}
+
+def yt_auth_args() -> list:
+    """Cookie flags for the yt_dlp command line."""
+    if COOKIES_FILE.exists():
+        return ["--cookies", str(COOKIES_FILE)]
+    return ["--cookies-from-browser", COOKIES_BROWSER]
 
 def format_seconds(seconds: float) -> str:
     """Formats seconds into MM:SS format."""
@@ -58,7 +75,7 @@ def gather_top_trending_videos(count: int = 10) -> str:
         "quiet": True,
         "extract_flat": True,
         "skip_download": True,
-        "js_runtimes": {"node": {"path": "/usr/bin/node"}},
+        # "js_runtimes": {"node": {"path": "/usr/bin/node"}},
         "remote_components": ["ejs:github"],
     }
 
@@ -82,6 +99,76 @@ def gather_top_trending_videos(count: int = 10) -> str:
     except Exception as e:
         return f"Error gathering trending videos: {str(e)}"
 
+# def get_most_replayed_scenes(video_url: str, max_scenes: int = 3, min_score: float = 0.0) -> str:
+#     """Extracts the YouTube 'most replayed' heatmap and returns the top distinct scenes.
+
+#     Args:
+#         video_url: Full YouTube video URL.
+#         max_scenes: Maximum number of scenes to return (default: 3).
+#         min_score: Optional minimum heatmap value (default: 0.0, no threshold).
+
+#     Returns:
+#         JSON string with scenes (start/end seconds, score, chapter).
+#     """
+#     ydl_opts = {
+#         "quiet": True,
+#         "skip_download": True,
+#         **yt_auth_opts(),
+#     }
+
+#     MIN_GAP = 30     # minimum seconds between chosen scenes
+#     CLIP_LEN = 30    # length of each short in seconds
+
+#     try:
+#         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+#             info = ydl.extract_info(video_url, download=False)
+#             heatmap = info.get("heatmap") or []
+#             duration = info.get("duration", 0)
+#             title = info.get("title", "")
+#             chapters = info.get("chapters") or []
+
+#             if not heatmap:
+#                 return json.dumps({"video": title, "url": video_url, "scenes": []})
+
+#             skip_sec = min(15, duration * 0.10)
+#             candidates = [p for p in heatmap if p.get("start_time", 0) >= skip_sec] or heatmap
+#             candidates = [p for p in candidates if p.get("value", 0) >= min_score]
+#             candidates.sort(key=lambda p: p.get("value", 0), reverse=True)
+
+#             picked = []
+#             for p in candidates:
+#                 center = (p.get("start_time", 0) + p.get("end_time", 0)) / 2
+#                 if all(abs(center - c) >= MIN_GAP for c, _ in picked):
+#                     picked.append((center, p))
+#                 if len(picked) >= max_scenes:
+#                     break
+
+#             scenes = []
+#             for center, p in sorted(picked, key=lambda x: x[0]):
+#                 st = max(0, center - CLIP_LEN / 2)
+#                 et = min(duration, st + CLIP_LEN)
+#                 chapter_title = "N/A"
+#                 for c in chapters:
+#                     if c.get("start_time", 0) <= st <= c.get("end_time", 0):
+#                         chapter_title = c.get("title", "N/A")
+#                         break
+#                 scenes.append({
+#                     "start_sec": round(st, 1),
+#                     "end_sec": round(et, 1),
+#                     "time_window": format_timestamp_window(st, et),
+#                     "heatmap_score": round(p.get("value", 0), 2),
+#                     "chapter": chapter_title,
+#                 })
+
+#             return json.dumps({
+#                 "video": title,
+#                 "url": video_url,
+#                 "duration": format_seconds(duration),
+#                 "scenes": scenes,
+#             }, indent=2)
+
+#     except Exception as e:
+#         return f"Error analyzing heatmap for video {video_url}: {str(e)}"
 
 def get_most_replayed_scenes(video_url: str, max_scenes: int = 3, min_score: float = 0.25) -> str:
     """Extracts YouTube audience retention heatmap data for a video and identifies peak most replayed scenes.
@@ -97,8 +184,8 @@ def get_most_replayed_scenes(video_url: str, max_scenes: int = 3, min_score: flo
     ydl_opts = {
         "quiet": True,
         "skip_download": True,
-        "js_runtimes": {"node": {"path": "/usr/bin/node"}},
-        "remote_components": ["ejs:github"],
+        # "js_runtimes": {"node": {"path": "/usr/bin/node"}},
+        # "remote_components": ["ejs:github"],
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -178,88 +265,171 @@ def get_most_replayed_scenes(video_url: str, max_scenes: int = 3, min_score: flo
         return f"Error analyzing heatmap for video {video_url}: {str(e)}"
 
 
-def crop_replayed_scene_to_mp4(video_url: str, start_time: float, end_time: float, output_filename: str) -> str:
-    """Crops a specific timestamp scene from a YouTube video into an MP4 file.
+# def crop_replayed_scene_to_mp4(video_url: str, start_time: float, end_time: float, output_filename: str) -> str:
+#     """Crops a specific timestamp scene from a YouTube video into an MP4 file.
+
+#     Args:
+#         video_url: Full YouTube video URL.
+#         start_time: Start timestamp in seconds.
+#         end_time: End timestamp in seconds.
+#         output_filename: Output MP4 filename (saved under test-short/output_shorts/).
+
+#     Returns:
+#         Status message with the path to the cropped MP4 file.
+#     """
+#     import sys
+#     import shutil
+#     import static_ffmpeg
+
+#     static_ffmpeg.add_paths()
+#     ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+#     output_path = OUTPUT_DIR / output_filename
+#     temp_video = OUTPUT_DIR / f"temp_{output_path.stem}.mp4"
+
+#     # Step 1: Download video stream with fast 360p format filter & quick timeouts
+#     dl_cmd = [
+#         sys.executable,
+#         "-m",
+#         "yt_dlp",
+#         "--quiet",
+#         "--no-warnings",
+#         "--retries", "2",
+#         "--fragment-retries", "1",
+#         "--socket-timeout", "10",
+#         "--format", "18/134+140/395+140/best[height<=360]/best",
+#         "-o", str(temp_video),
+#         video_url
+#     ]
+
+#     try:
+#         subprocess.run(dl_cmd, check=True)
+
+#         # Locate downloaded temp file (might have .mp4, .webm, or .mkv extension)
+#         matching_temps = list(OUTPUT_DIR.glob(f"temp_{output_path.stem}*"))
+#         if not matching_temps or matching_temps[0].stat().st_size == 0:
+#             return f"Failed to download base video for {video_url}"
+
+#         actual_temp = matching_temps[0]
+
+#         # Step 2: Crop scene segment locally using ffmpeg
+#         duration = max(1.0, end_time - start_time)
+#         crop_cmd = [
+#             ffmpeg_bin,
+#             "-y",
+#             "-ss", str(start_time),
+#             "-t", str(duration),
+#             "-i", str(actual_temp),
+#             "-c", "copy",
+#             str(output_path)
+#         ]
+#         subprocess.run(crop_cmd, check=True, capture_output=True)
+
+#         # Cleanup temporary full video download files
+#         for tmp in matching_temps:
+#             if tmp.exists():
+#                 try:
+#                     tmp.unlink()
+#                 except Exception:
+#                     pass
+
+#         if output_path.exists() and output_path.stat().st_size > 0:
+#             size_mb = output_path.stat().st_size / (1024 * 1024)
+#             return f"Successfully created MP4 short: {output_path} (Size: {size_mb:.2f} MB)"
+#         else:
+#             return f"Failed to verify cropped MP4 file at {output_path}"
+#     except Exception as e:
+#         matching_temps = list(OUTPUT_DIR.glob(f"temp_{output_path.stem}*"))
+#         for tmp in matching_temps:
+#             if tmp.exists():
+#                 try:
+#                     tmp.unlink()
+#                 except Exception:
+#                     pass
+#         return f"Error cropping scene to MP4 for {video_url}: {str(e)}"
+def crop_replayed_scene_to_mp4(video_url: str, start_time: float, end_time: float, output_filename: str, max_height: int = 1080) -> str:
+    """Crops a specific timestamp scene from a YouTube video into a high-quality MP4 file.
 
     Args:
         video_url: Full YouTube video URL.
         start_time: Start timestamp in seconds.
         end_time: End timestamp in seconds.
-        output_filename: Output MP4 filename (saved under test-short/output_shorts/).
+        output_filename: Output MP4 filename.
+        max_height: Maximum video height to download (default: 1080).
 
     Returns:
         Status message with the path to the cropped MP4 file.
     """
     import sys
     import shutil
-    import static_ffmpeg
 
     static_ffmpeg.add_paths()
     ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
     output_path = OUTPUT_DIR / output_filename
-    temp_video = OUTPUT_DIR / f"temp_{output_path.stem}.mp4"
+    temp_stem = f"temp_{output_path.stem}"
+    temp_template = str(OUTPUT_DIR / f"{temp_stem}.%(ext)s")
 
-    # Step 1: Download video stream with fast 360p format filter & quick timeouts
+    # Best video + best audio up to max_height, merged into mp4
+    fmt = (
+        f"bv*[height<={max_height}]+ba/"
+        f"b[height<={max_height}]/best"
+    )
+
+    # Step 1: download ONLY the needed section (much faster than the full video)
     dl_cmd = [
-        sys.executable,
-        "-m",
+        sys.executable, "-m",
         "yt_dlp",
+        *yt_auth_args(),    
         "--quiet",
         "--no-warnings",
-        "--retries", "2",
-        "--fragment-retries", "1",
-        "--socket-timeout", "10",
-        "--format", "18/134+140/395+140/best[height<=360]/best",
-        "-o", str(temp_video),
-        video_url
+        "--retries", "3",
+        "--fragment-retries", "3",
+        "--socket-timeout", "15",
+        "--format", 
+        fmt,
+        "--merge-output-format", "mkv",   # mkv container accepts any codec combo
+        "--download-sections", f"*{start_time}-{end_time}",
+        "-o", temp_template,
+        video_url,
     ]
+
+    def cleanup():
+        for tmp in OUTPUT_DIR.glob(f"{temp_stem}*"):
+            try:
+                tmp.unlink()
+            except Exception:
+                pass
 
     try:
         subprocess.run(dl_cmd, check=True)
 
-        # Locate downloaded temp file (might have .mp4, .webm, or .mkv extension)
-        matching_temps = list(OUTPUT_DIR.glob(f"temp_{output_path.stem}*"))
+        matching_temps = list(OUTPUT_DIR.glob(f"{temp_stem}*"))
         if not matching_temps or matching_temps[0].stat().st_size == 0:
             return f"Failed to download base video for {video_url}"
-
         actual_temp = matching_temps[0]
 
-        # Step 2: Crop scene segment locally using ffmpeg
-        duration = max(1.0, end_time - start_time)
-        crop_cmd = [
-            ffmpeg_bin,
-            "-y",
-            "-ss", str(start_time),
-            "-t", str(duration),
+        # Step 2: re-encode to a widely compatible, high-quality MP4
+        encode_cmd = [
+            ffmpeg_bin, "-y",
             "-i", str(actual_temp),
-            "-c", "copy",
-            str(output_path)
+            "-c:v", "libx264",
+            "-crf", "18",
+            "-preset", "medium",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(output_path),
         ]
-        subprocess.run(crop_cmd, check=True, capture_output=True)
-
-        # Cleanup temporary full video download files
-        for tmp in matching_temps:
-            if tmp.exists():
-                try:
-                    tmp.unlink()
-                except Exception:
-                    pass
+        subprocess.run(encode_cmd, check=True, capture_output=True)
+        cleanup()
 
         if output_path.exists() and output_path.stat().st_size > 0:
             size_mb = output_path.stat().st_size / (1024 * 1024)
             return f"Successfully created MP4 short: {output_path} (Size: {size_mb:.2f} MB)"
-        else:
-            return f"Failed to verify cropped MP4 file at {output_path}"
+        return f"Failed to verify cropped MP4 file at {output_path}"
     except Exception as e:
-        matching_temps = list(OUTPUT_DIR.glob(f"temp_{output_path.stem}*"))
-        for tmp in matching_temps:
-            if tmp.exists():
-                try:
-                    tmp.unlink()
-                except Exception:
-                    pass
+        cleanup()
         return f"Error cropping scene to MP4 for {video_url}: {str(e)}"
-
 
 def create_shorts_from_video_url(video_url: str, max_scenes: int = 3) -> str:
     """Processes a specific YouTube video URL, extracts its peak most replayed scenes from the YouTube heatmap,
@@ -447,7 +617,7 @@ def create_most_replayed_video_shorts(video_url: str = None, top_video_count: in
 root_agent = Agent(
     name="root_agent",
     model=Gemini(
-        model="gemini-2.5-flash",
+        model="gemini-3.7-flash",
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
     instruction=(
